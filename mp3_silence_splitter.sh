@@ -1,111 +1,107 @@
 #!/bin/bash
-# MP3 Splitter Script
-# Author: Ruben Barkow-Kuder
-# Script to split an MP3 file into chunks, maintaining silence at the end of each chunk
+# MP3 Splitter Script (Mit pipx - NICHT EMPFOHLEN)
+# Autor: Ruben Barkow-Kuder
+# Skript zum Aufteilen einer MP3-Datei in Chunks unter Beibehaltung der Stille am Ende jedes Chunks
 
-# Function to show help/usage information
+# Funktion zur Anzeige von Hilfe/Nutzungsinformationen
 show_help() {
-  echo "Usage: $0 [options] <MP3 file>"
-  echo "Options:"
-  echo "  -h            Show this help"
-  echo "  -n <number>   Number of chunks (default: 10)"
-  echo "  -f <output>   Output directory (default: directory with subfolder)"
-  echo "  -v            Verbose mode (show detailed output)"
+  echo "Verwendung: $0 [Optionen] <MP3-Datei>"
+  echo "Optionen:"
+  echo "  -h            Diese Hilfe anzeigen"
+  echo "  -n <Anzahl>   Anzahl der Chunks (Standard: 10)"
+  echo "  -o <Ausgabe>  Ausgabeverzeichnis (Standard: Unterordner im gleichen Verzeichnis)"
+  echo "  -v            Ausführlicher Modus (detaillierte Ausgabe anzeigen)"
+  echo "  -s <Millisekunden> Minimale Stillelänge (Standard: 1000)"
+  echo "  -t <dBFS>       Stille-Schwellwert (Standard: -70)"
 }
 
-# Default values
+# Standardwerte
 num_chunks=10
 output_dir=""
-verbose=False
+verbose=false
+min_silence_len=1000
+silence_thresh=-70
 
-# Parse options
-while getopts "hvn:f:" opt; do
+# Optionen parsen (einschließlich neuer Optionen)
+while getopts "hn:o:vs:t:" opt; do
   case "$opt" in
     h) show_help; exit 0 ;;
-    n) num_chunks=$OPTARG ;;
-    f) output_dir=$OPTARG ;;
-    v) verbose=True ;;
+    n) num_chunks="$OPTARG" ;;
+    o) output_dir="$OPTARG" ;;
+    v) verbose=true ;;
+    s) min_silence_len="$OPTARG" ;; # Option für Stillelänge
+    t) silence_thresh="$OPTARG" ;;   # Option für Stille-Schwellwert
     ?) show_help; exit 1 ;;
   esac
 done
 
-# Shift positional arguments
 shift $((OPTIND - 1))
+
+# Eingabedatei überprüfen
 if [ $# -eq 0 ]; then
-  echo "Error: Please provide an MP3 file."
+  echo "Fehler: Bitte geben Sie eine MP3-Datei an." >&2
   show_help
   exit 1
 fi
 
-# Input file and default output directory
 input_file="$1"
 
-# Set default output directory
+# Standard-Ausgabeverzeichnis setzen
 if [ -z "$output_dir" ]; then
   output_dir=$(dirname "$input_file")/$(basename "$input_file" .mp3)
 fi
 
-# Check if output directory exists, create a new one with date if it does
+# Überprüfen, ob das Ausgabeverzeichnis existiert, andernfalls erstellen
 if [ -d "$output_dir" ]; then
-  timestamp=$(date +%Y-%m-%d_%H-%M-%S) # Get timestamp
-  new_output_dir="$output_dir ($timestamp)" # Create new directory name
-  if [ "$verbose" = "True" ]; then echo "Output directory '$output_dir' exists. Creating '$new_output_dir'"; fi
-  output_dir="$new_output_dir" # Update output_dir variable
+  timestamp=$(date +%Y-%m-%d_%H-%M-%S)
+  output_dir="$output_dir ($timestamp)"
+  if $verbose; then echo "Ausgabeverzeichnis existiert, erstelle: $output_dir"; fi
 fi
 
-# Create output directory
-if [ ! -d "$output_dir" ]; then # Check again if the (new) directory exists
-  if [ "$verbose" = "True" ]; then echo "Creating output directory: $output_dir"; fi
-  mkdir -p "$output_dir" || { echo "Error: Could not create output directory." >&2; exit 1; }
-fi
+mkdir -p "$output_dir" || { echo "Fehler: Konnte Ausgabeverzeichnis nicht erstellen." >&2; exit 1; }
 
-# Check if ffmpeg is installed
+# Abhängigkeiten überprüfen (ffmpeg, python3, pipx)
 if ! command -v ffmpeg &> /dev/null; then
-  echo "ffmpeg is not installed. Install it with: sudo apt install ffmpeg"
+  echo "Fehler: ffmpeg ist nicht installiert." >&2
   exit 1
 fi
 
-# Check if pipx is installed
+if ! command -v python3 &> /dev/null || ! command -v pip &> /dev/null; then
+  echo "Fehler: Python 3 und pip sind erforderlich." >&2
+  exit 1
+fi
+
 if ! command -v pipx &> /dev/null; then
-  echo "pipx is not installed. Install it with: sudo apt install pipx"
+  echo "Fehler: pipx ist nicht installiert." >&2
   exit 1
 fi
 
-# Check if the virtual environment exists in pipx
-env_name="mp3_splitter_env"
-if ! pipx list | grep -q "$env_name"; then
-  echo "Creating virtual Python environment with pipx..."
-  pipx install pydub
-fi
-
-# Create the output directory
-if [ "$verbose" = "True" ]; then
-  echo "Creating the folder $output_dir"
-fi
-mkdir -p "$output_dir"
-
-# Python script for splitting the audio
-pipx run --spec pydub python3 - <<EOF
+# Wrapper-Skript erstellen
+wrapper_script=$(mktemp)
+cat <<EOF > "$wrapper_script"
 from pydub import AudioSegment, silence
 import os
 import sys
 
-# Input file and parameters
-input_file = "$input_file"
-output_dir = "$output_dir"
-num_chunks = $num_chunks
-verbose = $verbose
+# Variablen aus der Umgebung abrufen
+input_file = os.environ.get("INPUT_FILE")
+output_dir = os.environ.get("OUTPUT_DIR")
+num_chunks = int(os.environ.get("NUM_CHUNKS"))
+verbose = os.environ.get("VERBOSE") == "true"
+min_silence_len = int(os.environ.get("MIN_SILENCE_LEN", 500))
+silence_thresh = int(os.environ.get("SILENCE_THRESH", -40))
 
 if verbose:
-    print(f"Loading audio file: {input_file}")
+    print(f"Lade Audiodatei: {input_file}")
+
 try:
     audio = AudioSegment.from_file(input_file)
 except Exception as e:
-    print(f"Error loading audio file: {e}")
+    print(f"Fehler beim Laden der Audiodatei: {e}")
     sys.exit(1)
 
 # Finde Stille-Segmente
-silence_segments = silence.detect_silence(audio, min_silence_len=500, silence_thresh=-40) # min_silence_len reduziert
+silence_segments = silence.detect_silence(audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
 
 # Erstelle Zeitpunkte zum Splitten
 split_points = [0]
@@ -117,7 +113,6 @@ split_points.append(len(audio))
 max_chunk_duration = len(audio) // num_chunks
 grouped_chunks = []
 current_chunk = AudioSegment.empty()
-last_split_point_index = 0
 
 for i in range(1, len(split_points)):
     chunk = audio[split_points[i-1]:split_points[i]]
@@ -126,9 +121,8 @@ for i in range(1, len(split_points)):
     else:
         grouped_chunks.append(current_chunk)
         current_chunk = chunk
-    last_split_point_index = i
 
-grouped_chunks.append(current_chunk) # Letzten Chunk hinzufügen
+grouped_chunks.append(current_chunk)
 
 # Speichere die Chunks
 os.makedirs(output_dir, exist_ok=True)
@@ -141,18 +135,35 @@ try:
             sys.stdout.write(".")
             sys.stdout.flush()
         elif verbose:
-            print(f"Exported chunk {i + 1}: {output_path}")
+            print(f"Exportierter Chunk {i + 1}: {output_path}")
     if not verbose:
         print("")
-
 except Exception as e:
-    print(f"Error exporting chunk: {e}")
+    print(f"Fehler beim Exportieren des Chunks: {e}")
     sys.exit(1)
 
-print(f"Audio file split into {len(grouped_chunks)} parts in directory '{output_dir}'.")
+print(f"Audiodatei in {len(grouped_chunks)} Teile im Verzeichnis '{output_dir}' aufgeteilt.")
 EOF
 
-# Final message
-if [ "$verbose" = "True" ]; then
-  echo "The script has been executed successfully."
-fi
+chmod +x "$wrapper_script"
+
+# Umgebungsvariablen setzen
+export VERBOSE="$verbose"
+export INPUT_FILE="$input_file"
+export OUTPUT_DIR="$output_dir"
+export NUM_CHUNKS="$num_chunks"
+export MIN_SILENCE_LEN="$min_silence_len"
+export SILENCE_THRESH="$silence_thresh"
+
+# Wrapper-Skript mit pipx ausführen
+if $verbose; then echo "Führe Python-Skript aus..."; fi
+
+pipx run --spec pydub python3 "$wrapper_script"
+
+# Wrapper-Skript aufräumen
+rm "$wrapper_script"
+
+# Abschließende Nachricht
+if $verbose; then echo "Skript erfolgreich abgeschlossen."; fi
+
+exit 0
