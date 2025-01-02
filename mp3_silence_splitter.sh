@@ -47,17 +47,18 @@ fi
 
 # Check if output directory exists, create a new one with date if it does
 if [ -d "$output_dir" ]; then
-  timestamp=$(date +%Y%m%d%H%M%S)
-  new_output_dir="$output_dir ($timestamp)"
-  if $verbose; then echo "Output directory '$output_dir' exists. Creating '$new_output_dir'"; fi
-  output_dir="$new_output_dir"
+  timestamp=$(date +%Y-%m-%d_%H-%M-%S) # Get timestamp
+  new_output_dir="$output_dir ($timestamp)" # Create new directory name
+  if [ "$verbose" = "True" ]; then echo "Output directory '$output_dir' exists. Creating '$new_output_dir'"; fi
+  output_dir="$new_output_dir" # Update output_dir variable
 fi
 
 # Create output directory
-if [ ! -d "$output_dir" ]; then
-  if $verbose; then echo "Creating output directory: $output_dir"; fi
+if [ ! -d "$output_dir" ]; then # Check again if the (new) directory exists
+  if [ "$verbose" = "True" ]; then echo "Creating output directory: $output_dir"; fi
   mkdir -p "$output_dir" || { echo "Error: Could not create output directory." >&2; exit 1; }
 fi
+
 # Check if ffmpeg is installed
 if ! command -v ffmpeg &> /dev/null; then
   echo "ffmpeg is not installed. Install it with: sudo apt install ffmpeg"
@@ -87,6 +88,7 @@ mkdir -p "$output_dir"
 pipx run --spec pydub python3 - <<EOF
 from pydub import AudioSegment, silence
 import os
+import sys
 
 # Input file and parameters
 input_file = "$input_file"
@@ -96,49 +98,56 @@ verbose = $verbose
 
 if verbose:
     print(f"Loading audio file: {input_file}")
-audio = AudioSegment.from_file(input_file)
+try:
+    audio = AudioSegment.from_file(input_file)
+except Exception as e:
+    print(f"Error loading audio file: {e}")
+    sys.exit(1)
 
 # Finde Stille-Segmente
-silence_segments = silence.detect_silence(audio, min_silence_len=1000, silence_thresh=-40)
+silence_segments = silence.detect_silence(audio, min_silence_len=500, silence_thresh=-40) # min_silence_len reduziert
 
-# Erstelle Chunks inklusive Stille
-chunks = []
-last_end = 0
+# Erstelle Zeitpunkte zum Splitten
+split_points = [0]
 for start, end in silence_segments:
-    # Füge den Audioabschnitt vor der Stille hinzu
-    if start > last_end:
-        chunks.append(audio[last_end:start])
-    # Füge das Stille-Segment hinzu
-    chunks.append(audio[start:end])
-    last_end = end
-
-# Füge den restlichen Audioabschnitt nach der letzten Stille hinzu
-if last_end < len(audio):
-    chunks.append(audio[last_end:])
+    split_points.append(start)
+split_points.append(len(audio))
 
 # Gruppiere Chunks basierend auf der maximalen Chunk-Dauer
 max_chunk_duration = len(audio) // num_chunks
 grouped_chunks = []
 current_chunk = AudioSegment.empty()
+last_split_point_index = 0
 
-for chunk in chunks:
+for i in range(1, len(split_points)):
+    chunk = audio[split_points[i-1]:split_points[i]]
     if len(current_chunk) + len(chunk) <= max_chunk_duration:
         current_chunk += chunk
     else:
         grouped_chunks.append(current_chunk)
         current_chunk = chunk
+    last_split_point_index = i
 
-# Füge den letzten Chunk hinzu
-grouped_chunks.append(current_chunk)
+grouped_chunks.append(current_chunk) # Letzten Chunk hinzufügen
 
 # Speichere die Chunks
 os.makedirs(output_dir, exist_ok=True)
-for i, chunk in enumerate(grouped_chunks):
-    filename = f"{str(i + 1).zfill(2)}_{os.path.basename(input_file)}"
-    output_path = os.path.join(output_dir, filename)
-    chunk.export(output_path, format="mp3", bitrate="320k") # Bitrate hinzugefügt
-    if verbose:
-        print(f"Exported chunk {i + 1}: {output_path}")
+try:
+    for i, chunk in enumerate(grouped_chunks):
+        filename = f"{str(i + 1).zfill(2)}_{os.path.basename(input_file)}"
+        output_path = os.path.join(output_dir, filename)
+        chunk.export(output_path, format="mp3", bitrate="320k")
+        if not verbose:
+            sys.stdout.write(".")
+            sys.stdout.flush()
+        elif verbose:
+            print(f"Exported chunk {i + 1}: {output_path}")
+    if not verbose:
+        print("")
+
+except Exception as e:
+    print(f"Error exporting chunk: {e}")
+    sys.exit(1)
 
 print(f"Audio file split into {len(grouped_chunks)} parts in directory '{output_dir}'.")
 EOF
