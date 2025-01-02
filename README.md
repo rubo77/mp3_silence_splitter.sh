@@ -35,6 +35,8 @@ This Bash script splits an MP3 audio file into smaller chunks, preserving silenc
 *   `-n <number>`: Number of chunks to split the audio into (default: 10).
 *   `-o <output>`: Output directory (default: `<input_dir>/<input_filename>`).
 *   `-v`: Verbose mode (show detailed output).
+*   `-s <milliseconds>`: Minimum silence length
+*   `-t <dBFS>`: Silence threshold 
 
 ## Examples
 
