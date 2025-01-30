@@ -15,8 +15,8 @@ show_help() {
   echo "  -v            Verbose mode (show detailed output)"
   echo "  -s <milliseconds> Minimum silence length (default: 800)"
   echo "  -t <dBFS>       Silence threshold (default: -60)"
-  echo "  -f <format>   Output format (default: mp3, supported: mp3, wav, flac)" # New option
-  echo "  -b <bitrate>  Output bitrate (default: 320k)" # New option
+  echo "  -f <format>   Output format (default: determined by input, supported: mp3, wav, flac, aac, ogg)"
+  echo "  -b <bitrate>  Output bitrate (default: determined by input, or format-specific max, e.g. 320k for mp3)"
 }
 
 # Default values
@@ -25,8 +25,17 @@ output_dir=""
 verbose=false
 min_silence_len=800
 silence_thresh=-60
-output_format="mp3" # Default output format
-output_bitrate="320k" # Default bitrate
+output_format="" # Default output format (empty string means determine by input)
+output_bitrate="" # Default bitrate (empty string means determine by input)
+
+# Maximum bitrates for common formats (adjust as needed)
+declare -A max_bitrates=(
+    ["mp3"]="320k"
+    ["aac"]="320k" # Or higher, depending on AAC profile
+    ["wav"]=""       # No bitrate for WAV (lossless)
+    ["flac"]=""      # No bitrate for FLAC (lossless)
+    ["ogg"]="500k"   # Variable, up to 500k or more
+)
 
 # Parse options (including new options)
 while getopts "hn:o:vs:t:f:b:" opt; do
@@ -99,6 +108,7 @@ num_chunks = int(os.environ.get("NUM_CHUNKS"))
 verbose = os.environ.get("VERBOSE") == "true"
 min_silence_len = int(os.environ.get("MIN_SILENCE_LEN", 1000)) # Provide defaults
 silence_thresh = int(os.environ.get("SILENCE_THRESH", -70))   # Provide defaults
+max_bitrates = eval(os.environ.get("MAX_BITRATES"))
 
 if verbose:
     print(f"Loading audio file: {input_file}")
@@ -139,7 +149,16 @@ try:
     for i, chunk in enumerate(grouped_chunks):
         filename = f"{str(i + 1).zfill(2)}_{os.path.basename(input_file)}"
         output_path = os.path.join(output_dir, filename)
-        chunk.export(output_path, format=os.environ.get("OUTPUT_FORMAT"), bitrate=os.environ.get("OUTPUT_BITRATE")) # Use output format and bitrate
+
+        output_format = os.environ.get("OUTPUT_FORMAT")
+        if not output_format: # Determine by input if not specified
+            output_format = os.path.splitext(input_file)[1][1:] # Extract extension without dot
+
+        output_bitrate = os.environ.get("OUTPUT_BITRATE")
+        if not output_bitrate: # Determine bitrate if not specified
+            output_bitrate = max_bitrates.get(output_format, "320k") # Use format-specific max or fallback
+
+        chunk.export(output_path, format=output_format, bitrate=output_bitrate)
         if not verbose:
             sys.stdout.write(".")
             sys.stdout.flush()
@@ -163,8 +182,15 @@ export OUTPUT_DIR="$output_dir"
 export NUM_CHUNKS="$num_chunks"
 export MIN_SILENCE_LEN="$min_silence_len"
 export SILENCE_THRESH="$silence_thresh"
-export OUTPUT_FORMAT="$output_format"
-export OUTPUT_BITRATE="$output_bitrate"
+export MAX_BITRATES="($(declare -p max_bitrates))"
+
+if [ -n "$output_format" ]; then  # Only export if explicitly set
+  export OUTPUT_FORMAT="$output_format"
+fi
+
+if [ -n "$output_bitrate" ]; then # Only export if explicitly set
+  export OUTPUT_BITRATE="$output_bitrate"
+fi
 
 # Run wrapper script with pipx
 if $verbose; then echo "Running Python script..."; fi

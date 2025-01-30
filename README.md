@@ -1,6 +1,6 @@
-# MP3 Splitter Script
+# Audio Splitter Script
 
-This Bash script splits an MP3 or M4A audio file into smaller MP3 chunks, preserving silence between segments. It uses `ffmpeg` for audio processing and `pydub` (a Python library) for audio manipulation.
+This Bash script splits an Audio or M4A audio file into smaller Audio chunks, preserving silence between segments. It uses `ffmpeg` for audio processing and `pydub` (a Python library) for audio manipulation.
 
 ## Features
 
@@ -25,13 +25,13 @@ This Bash script splits an MP3 or M4A audio file into smaller MP3 chunks, preser
 
 3.  **Run the script:**
     
-      ./mp3_silence_splitter.sh [options] <MP3 file>
+      ./mp3_silence_splitter.sh [options] <Audio file>
 
-    * `<MP3 file>`: The path to the MP3 file you want to split.
+    * `<Audio file>`: The path to the Audio file you want to split.
 
 4.  **Output:**
         
-      The script will create a new directory (default: `<input_dir>/<input_filename>`) containing the split audio files. Each file will be named `<input_filename>_partN.mp3`, where `N` is the part number. Default: 10 parts, MP3 format, 320 kbps.
+      The script will create a new directory (default: `<input_dir>/<input_filename>`) containing the split audio files. Each file will be named `<input_filename>_partN.mp3`, where `N` is the part number. Default: 10 parts, the same audio format as the input, maximum bitrate for the format e.g. 320 kbps for mp3.
 
 ## Options
 
@@ -41,8 +41,8 @@ This Bash script splits an MP3 or M4A audio file into smaller MP3 chunks, preser
 * `-o <output>`: Output directory (default: `<input_dir>/<input_filename>`).
 * `-s <milliseconds>`: Minimum silence length (default: 800).
 * `-t <dBFS>`: Silence threshold (default: -60).
-* `-f <format>`: Output format (default: "mp3").
-* `-b <bitrate>`: Output bitrate (default: "320k").
+* `-f <format>`: Output format (default: <input_format>).
+* `-b <bitrate>`: Output bitrate (default: "320k" for "mp3").
 
 ## Examples
 
@@ -50,9 +50,9 @@ This Bash script splits an MP3 or M4A audio file into smaller MP3 chunks, preser
     
       ./mp3_silence_splitter.sh -n 5 audio.mp3
 
-* Split `audio.mp3` into the default number of chunks (10) and save them to a directory named `my_output`:
+* Split `audio.mp3` into the default number of chunks (10) and save them to a directory named `my_output` with a bitrate of 128k:
     
-      ./mp3_silence_splitter.sh -o my_output audio.mp3
+      ./mp3_silence_splitter.sh -o my_output -b 128k audio.mp3
 
 * Split `audio.mp3` into 8 chunks with verbose output:
     
@@ -60,7 +60,7 @@ This Bash script splits an MP3 or M4A audio file into smaller MP3 chunks, preser
 
 ## How it works
 
-The script first checks for the required dependencies (`ffmpeg`, `python3`, `pip3`). Then, it creates a virtual environment to isolate the `pydub` installation. It installs `pydub` within this virtual environment using `pip`. The provided MP3 file is then processed by the Python script, which uses `pydub` to detect silence segments and split the audio accordingly. The resulting chunks are saved to the specified output directory.
+The script first checks for the required dependencies (`ffmpeg`, `python3`, `pip3`). Then, it creates a virtual environment to isolate the `pydub` installation. It installs `pydub` within this virtual environment using `pip`. The provided Audio file is then processed by the Python script, which uses `pydub` to detect silence segments and split the audio accordingly. The resulting chunks are saved to the specified output directory.
 
 ## Notes
 
