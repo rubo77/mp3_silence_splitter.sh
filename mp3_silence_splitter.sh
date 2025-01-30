@@ -1,11 +1,13 @@
 #!/bin/bash
-# MP3 Splitter Script (Using pipx and pydub)
+# Audio Splitter Script (Using pipx and pydub)
 # Author: Ruben Barkow-Kuder
-# Script to split an MP3 file into chunks, maintaining silence at the end of each chunk
+# Script to split an audio file into chunks, maintaining silence at the end of each chunk
+
+# Supported formats: MP3, M4A/AAC, WAV, FLAC, OGG, and many more (depending on your FFmpeg installation)
 
 # Function to show help/usage information
 show_help() {
-  echo "Usage: $0 [options] <MP3 file>"
+  echo "Usage: $0 [options] <audio file>"
   echo "Options:"
   echo "  -h            Show this help"
   echo "  -n <number>   Number of chunks (default: 10)"
@@ -13,6 +15,8 @@ show_help() {
   echo "  -v            Verbose mode (show detailed output)"
   echo "  -s <milliseconds> Minimum silence length (default: 800)"
   echo "  -t <dBFS>       Silence threshold (default: -60)"
+  echo "  -f <format>   Output format (default: mp3, supported: mp3, wav, flac)" # New option
+  echo "  -b <bitrate>  Output bitrate (default: 320k)" # New option
 }
 
 # Default values
@@ -21,34 +25,39 @@ output_dir=""
 verbose=false
 min_silence_len=800
 silence_thresh=-60
+output_format="mp3" # Default output format
+output_bitrate="320k" # Default bitrate
 
 # Parse options (including new options)
-while getopts "hn:o:vs:t:" opt; do
+while getopts "hn:o:vs:t:f:b:" opt; do
   case "$opt" in
     h) show_help; exit 0 ;;
     n) num_chunks="$OPTARG" ;;
     o) output_dir="$OPTARG" ;;
     v) verbose=true ;;
-    s) min_silence_len="$OPTARG" ;; # Option for silence length
-    t) silence_thresh="$OPTARG" ;;   # Option for silence threshold
+    s) min_silence_len="$OPTARG" ;;
+    t) silence_thresh="$OPTARG" ;;
+    f) output_format="$OPTARG" ;; # Option for output format
+    b) output_bitrate="$OPTARG" ;; # Option for bitrate
     ?) show_help; exit 1 ;;
   esac
 done
 
 shift $((OPTIND - 1))
 
-# Check input file
+# Check input file and determine extension
 if [ $# -eq 0 ]; then
-  echo "Error: Please provide an MP3 file." >&2
+  echo "Error: Please provide an audio file." >&2
   show_help
   exit 1
 fi
 
 input_file="$1"
+file_extension="${input_file##*.}"
 
 # Set default output directory
 if [ -z "$output_dir" ]; then
-  output_dir=$(dirname "$input_file")/$(basename "$input_file" .mp3)
+  output_dir=$(dirname "$input_file")/$(basename "$input_file" .$file_extension)
 fi
 
 # Check if output directory exists, create a new one with timestamp if it does
@@ -130,7 +139,7 @@ try:
     for i, chunk in enumerate(grouped_chunks):
         filename = f"{str(i + 1).zfill(2)}_{os.path.basename(input_file)}"
         output_path = os.path.join(output_dir, filename)
-        chunk.export(output_path, format="mp3", bitrate="320k")
+        chunk.export(output_path, format=os.environ.get("OUTPUT_FORMAT"), bitrate=os.environ.get("OUTPUT_BITRATE")) # Use output format and bitrate
         if not verbose:
             sys.stdout.write(".")
             sys.stdout.flush()
@@ -154,6 +163,8 @@ export OUTPUT_DIR="$output_dir"
 export NUM_CHUNKS="$num_chunks"
 export MIN_SILENCE_LEN="$min_silence_len"
 export SILENCE_THRESH="$silence_thresh"
+export OUTPUT_FORMAT="$output_format"
+export OUTPUT_BITRATE="$output_bitrate"
 
 # Run wrapper script with pipx
 if $verbose; then echo "Running Python script..."; fi
